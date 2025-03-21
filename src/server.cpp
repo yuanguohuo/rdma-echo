@@ -117,15 +117,19 @@ static int on_cm_event(struct rdma_cm_event* event)
 
 int main(int argc, char* argv[])
 {
-  //Yuanguo: listening_id (rdma_cm_id*类型)  <------对应------> tcp编程中的(listening) sockfd;
-  struct rdma_cm_id* listening_id = NULL;
+  //Yuanguo: listening_cm_id (rdma_cm_id*类型)  <------对应------> tcp编程中的(listening) sockfd;
+  struct rdma_cm_id* listening_cm_id = NULL;
 
   //Yuanguo: cm_eventchannel  <------对应------> tcp编程中的管理(listening)sockfd的epoll实例；
+  //  注: 这个cm_eventchannel只用来接收"connection状态"相关的通知；Send/Recive Completion通知由ibv_comp_channel
+  //      接收。见app_context及其成员:
+  //              struct ibv_cq* completionQ;
+  //              struct ibv_comp_channel* channel;
   //  注：nfs-ganesha中也是把epoll抽象成channel;
   struct rdma_event_channel* cm_eventchannel = rdma_create_event_channel();
 
   //Yuanguo: RDMA中使用的sockaddr_in实例和TCP/UDP没有关系；port在RDMA层独立管理；这里根本没有建立TCP/UDP监听(可以使用netstat验证)；
-  //     相对于只是"复用"了原来tcp编程中的“地址”这个概念，但在RDMA中，它处于独立的名字空间，工作方式也和TCP/UDP不同；
+  //     相当于只是"复用"了原来tcp编程中的“地址”这个概念，但在RDMA中，它处于独立的名字空间，工作方式也和TCP/UDP不同；
   //     即是使用原生的InfiniBand传输，也可以通过这个sockaddr_in来发现（还有没有别的方法？）
   struct sockaddr_in sockaddr;
 
@@ -147,30 +151,30 @@ int main(int argc, char* argv[])
 
   // create connection manager id
   //Yuanguo: 相当于tcp编程中的socket()调用；只是关联了一个channel (epoll实例);
-  FAIL_ON_NZ(rdma_create_id(cm_eventchannel, &listening_id, NULL, RDMA_PS_IB));
+  FAIL_ON_NZ(rdma_create_id(cm_eventchannel, &listening_cm_id, NULL, RDMA_PS_IB));
 
   // bind to port and socket
   // Yuanguo: 相当于tcp编程中的bind();
-  //    listening_id <-------> (listening) sockfd
-  //    sockaddr     <-------> addr
-  FAIL_ON_NZ(rdma_bind_addr(listening_id, (struct sockaddr*)&sockaddr));
+  //    listening_cm_id <-------> (listening) sockfd
+  //    sockaddr        <-------> addr
+  FAIL_ON_NZ(rdma_bind_addr(listening_cm_id, (struct sockaddr*)&sockaddr));
 
   // start listening
   // Yuanguo: 可见和tcp编程中listen()也很像. 但注意：这里没有建立TCP/UDP监听！！！
-  FAIL_ON_NZ(rdma_listen(listening_id, 10));
+  FAIL_ON_NZ(rdma_listen(listening_cm_id, 10));
 
   {
     uint16_t port = ntohs(sockaddr.sin_port);
-    uint16_t rdma_port = ntohs(rdma_get_src_port(listening_id));
+    uint16_t rdma_port = ntohs(rdma_get_src_port(listening_cm_id));
 
     printf("Listening to port %d\n", rdma_port);
     printf("addrinfo port %d == %d rdma_get_src_port\n", port, rdma_port);
   }
 
-  show_ibv_context("listening cm id", listening_id->verbs);
+  show_ibv_context("listening cm id", listening_cm_id->verbs);
 
   //Yuanguo: rdma_get_cm_event相当于epoll_wait(epoll实例);
-  //  由于cm_eventchannel这个"epoll实例"只管理listening sockfd，所以poll到的event也都是connection生命周期相关的：
+  //  由于cm_eventchannel这个"epoll实例"只管理listening sockfd，所以poll到的event也都是"connection状态"相关的：
   //      - RDMA_CM_EVENT_CONNECT_REQUEST
   //      - RDMA_CM_EVENT_ESTABLISHED
   //      - RDMA_CM_EVENT_CONNECT_REQUEST
@@ -184,7 +188,7 @@ int main(int argc, char* argv[])
   //      *   waits for a connection request event to occur. Connection request
   //      *   events give the user a newly created rdma_cm_id(Yuanguo：就是用于传
   //      *   输数据的新rdma_cm_id实例), similar to a new socket, but the rdma_cm_id
-  //      *   is bound to a specific RDMA device (Yuanguo: listening_id实例也会bound
+  //      *   is bound to a specific RDMA device (Yuanguo: listening_cm_id实例也bound
   //      *   RDMA设备).
   //      *   rdma_accept is called on the new rdma_cm_id. A user may override the
   //      *   default connection parameters and exchange private data as part of the
@@ -203,7 +207,7 @@ int main(int argc, char* argv[])
     }
   }
 
-  rdma_destroy_id(listening_id);
+  rdma_destroy_id(listening_cm_id);
   rdma_destroy_event_channel(cm_eventchannel);
   return 0;
 }

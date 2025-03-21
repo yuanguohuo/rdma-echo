@@ -27,35 +27,20 @@ static void on_complete(struct ibv_wc* wc)
 
 static int on_addr_resolved(struct rdma_cm_id* id)
 {
+  printf("Address resolved to: %s!\n", get_inet_peer_address(id));
 
-  printf("Address resolved to: %s! Resolving Route...\n", get_inet_peer_address(id));
+  show_ibv_context("cm id", id->verbs);
 
   // initialize app context if not initialized, build peer connection
   // create queue pair, register memory, initialize memory buffers,
   // and post initial receives
   initialize_peer_connection(id, on_complete);
 
+  printf("Resolving Route...\n");
+
   // resolve route to the server address
-  // Yuanguo: 地址解析完成，开始路由解析
+  // Yuanguo: 地址解析完成，开始路由解析。解析成功会生成一个RDMA_CM_EVENT_ROUTE_RESOLVED事件；
   FAIL_ON_NZ(rdma_resolve_route(id, timeout));
-
-  {
-    std::cout << __func__ << " ibv_context: " << id->verbs << std::endl;
-    if (id->verbs) {
-      struct ibv_device* ibv_dev = id->verbs->device;
-      std::cout << "ibv_device: " << ibv_dev << std::endl;
-
-      std::cout << ibv_dev << std::endl;
-      std::cout << "got ib device" << std::endl
-        << "    node_type       :    " << ibv_dev->node_type << std::endl
-        << "    transport_type  :    " << ibv_dev->transport_type << std::endl
-        << "    name            :    " << ibv_dev->name << std::endl
-        << "    dev_name        :    " << ibv_dev->dev_name << std::endl
-        << "    dev_path        :    " << ibv_dev->dev_path << std::endl
-        << "    ibdev_path      :    " << ibv_dev->ibdev_path << std::endl;
-    }
-  }
-
   return 0;
 }
 
@@ -63,8 +48,9 @@ static int on_route_resolved(struct rdma_cm_id* id)
 {
   struct rdma_conn_param conn_param;
 
-  //Yuanguo: 路由解析完成，开始连接
   printf("Route to %s resolved!\nConnecting...\n", get_inet_peer_address(id));
+
+  //Yuanguo: 路由解析完成，开始连接。连接成功会生成一个RDMA_CM_EVENT_ESTABLISHED事件；
   FAIL_ON_NZ(rdma_connect(id, &conn_param));
   return 0;
 }
@@ -88,9 +74,7 @@ static int on_connection(struct rdma_cm_id* id)
     }
 
     memcpy(conn->send_buf, buffer, BUFFER_SIZE);
-
     post_send_work_request(conn);
-
     post_recv_work_request(conn);
   }
 
@@ -122,38 +106,31 @@ static int connection_event(struct rdma_cm_event* event)
 
 int main(int argc, char* argv[])
 {
-  struct addrinfo* addr;
   struct rdma_cm_id* cm_id = NULL;
   struct rdma_event_channel* channel = NULL;
   struct rdma_cm_event* event = NULL;
+  struct sockaddr_in dst_addr;
 
   if (argc != 3) {
     printf("usage: %s <ip> <port>\n", argv[0]);
     return EXIT_FAILURE;
   }
 
-  FAIL_ON_NZ(getaddrinfo(argv[1], argv[2], NULL, &addr));
-
-  {
-    std::cout << "zhuhai "
-      << "addr: " << inet_ntoa(((sockaddr_in*)addr->ai_addr)->sin_addr)
-      << "port: "<< ntohs(((sockaddr_in*)addr->ai_addr)->sin_port)
-      << std::endl;
-  }
+  memset(&dst_addr, 0, sizeof(struct sockaddr_in));
+  dst_addr.sin_family = AF_INET;
+  inet_aton(argv[1], &dst_addr.sin_addr) ;
+  dst_addr.sin_port = htons(atoi(argv[2]));
 
   FAIL_ON_Z(channel = rdma_create_event_channel());
 
   FAIL_ON_NZ(rdma_create_id(channel, &cm_id, NULL, RDMA_PS_IB));
 
-  printf("resolve addr %s:%s\n", argv[1], argv[2]);
-
   //Yuanguo:
-  // 将逻辑地址（如 IP 和端口）转换为 RDMA 通信所需的物理地址信息（如 GID、LID、路径 MTU 等）。
+  // 将逻辑地址（如IP和port）转换为RDMA通信所需的物理地址信息（如GID、LID、路径MTU等）。
   // 当解析完成后，会生成一个`RDMA_CM_EVENT_ADDR_RESOLVED`事件，通知应用程序可以继续下一步操作，
   // 如解析路由。
-  FAIL_ON_NZ(rdma_resolve_addr(cm_id, NULL, addr->ai_addr, timeout));
-
-  freeaddrinfo(addr);
+  printf("Resolve address ...\n");
+  FAIL_ON_NZ(rdma_resolve_addr(cm_id, NULL, (struct sockaddr*)&dst_addr, timeout));
 
   while (!rdma_get_cm_event(channel, &event)) {
     struct rdma_cm_event event_copy;
