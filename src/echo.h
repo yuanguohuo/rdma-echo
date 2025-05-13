@@ -90,6 +90,14 @@ static void build_app_context(struct ibv_context* verbs_context, on_complete_t o
     app_context->verbs = verbs_context;
 
     // Allocate Protection Domain - returns NULL on failure
+    // Yuanguo: PD(Protection Domain)是"资源隔离单元"，用于管理RDMA硬件对本地内存的访问权限。
+    //   只有绑定到同一PD的QP和MR(Memory Region)之间可以执行RDMA操作（如RDMA读/写）；
+    //   见initialize_peer_connection()函数：
+    //       - 创建QP的时候(rdma_create_qp)，指定所属保护域PD；
+    //       - 注册内存的时候(ibv_reg_mr)， 指定同一所属保护域PD; PD为MR生成本地密钥(lkey)和远程密钥(rkey)
+    //           - lkey: 用于本地QP验证内存访问权限；
+    //           - rkey: 用于远程节点执行RDMA读/写操作的权限验证；
+    //   这样，QP和MR才能互操作(RDMA读写)；通过PD验证的MR可直接被RDMA网卡访问，无需内核参与；
     FAIL_ON_Z(app_context->protectionDomain = ibv_alloc_pd(verbs_context));
 
     // Create Completion Events Channel
