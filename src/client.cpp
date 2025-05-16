@@ -46,9 +46,10 @@ static int on_addr_resolved(struct rdma_cm_id* id)
 
 static int on_route_resolved(struct rdma_cm_id* id)
 {
-  struct rdma_conn_param conn_param;
-
   printf("Route to %s resolved!\nConnecting...\n", get_inet_peer_address(id));
+
+  struct rdma_conn_param conn_param;
+  bzero(&conn_param, sizeof(conn_param));
 
   //Yuanguo: 路由解析完成，开始连接。连接成功会生成一个RDMA_CM_EVENT_ESTABLISHED事件；
   FAIL_ON_NZ(rdma_connect(id, &conn_param));
