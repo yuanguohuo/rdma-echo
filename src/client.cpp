@@ -124,6 +124,7 @@ int main(int argc, char* argv[])
 
   FAIL_ON_Z(channel = rdma_create_event_channel());
 
+  //FAIL_ON_NZ(rdma_create_id(channel, &cm_id, NULL, RDMA_PS_TCP));
   FAIL_ON_NZ(rdma_create_id(channel, &cm_id, NULL, RDMA_PS_IB));
 
   //Yuanguo:

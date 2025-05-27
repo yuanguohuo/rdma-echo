@@ -151,6 +151,7 @@ int main(int argc, char* argv[])
 
   // create connection manager id
   //Yuanguo: 相当于tcp编程中的socket()调用；只是关联了一个channel (epoll实例);
+  //FAIL_ON_NZ(rdma_create_id(cm_eventchannel, &listening_cm_id, NULL, RDMA_PS_TCP));
   FAIL_ON_NZ(rdma_create_id(cm_eventchannel, &listening_cm_id, NULL, RDMA_PS_IB));
 
   // bind to port and socket
